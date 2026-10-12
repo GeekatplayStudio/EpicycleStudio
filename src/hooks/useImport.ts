@@ -33,6 +33,7 @@ export function parsePointFile(text: string): Point3[] {
 /** Handles SVG, bitmap and point-list imports (files, drops, paste). */
 export function useImport() {
   const setPoints = useStudio((s) => s.setPoints)
+  const setModel = useStudio((s) => s.setModel)
   const notify = useStudio((s) => s.notify)
 
   const importFile = useCallback(
@@ -56,6 +57,14 @@ export function useImport() {
           notify(`Traced silhouette · ${res.points.length} boundary px · threshold ${res.threshold}${res.inverted ? ' · inverted' : ''}`)
           return
         }
+        if (/\.(obj|stl|glb|gltf)$/i.test(fileName)) {
+          const { loadModelFile } = await import('@/core/tracer/modelLoader')
+          const { normalizeMesh } = await import('@/core/tracer/meshLoop')
+          const mesh = normalizeMesh(await loadModelFile(file as File))
+          setModel(mesh, fileName.replace(/\.(obj|stl|glb|gltf)$/i, ''))
+          notify(`Loaded model · ${mesh.index.length / 3} triangles`)
+          return
+        }
         if (type === 'application/json' || /\.json$/i.test(fileName) || type === 'text/csv' || /\.csv$/i.test(fileName)) {
           const text = await file.text()
           const pts = parsePointFile(text)
@@ -65,12 +74,12 @@ export function useImport() {
           notify(`Imported ${pts.length} ${is3D ? '3D' : '2D'} points`)
           return
         }
-        notify('Unsupported file. Use SVG, PNG, JPEG, WebP, JSON or CSV.')
+        notify('Unsupported file. Use SVG, PNG, JPEG, WebP, OBJ, STL, GLB, JSON or CSV.')
       } catch (err) {
         notify(err instanceof Error ? err.message : 'Import failed')
       }
     },
-    [setPoints, notify],
+    [setPoints, setModel, notify],
   )
 
   return { importFile }

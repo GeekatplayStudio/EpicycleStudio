@@ -78,7 +78,7 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
       <input
         ref={fileRef}
         type="file"
-        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/gif,image/bmp,.json,application/json,.csv,text/csv"
+        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/gif,image/bmp,.json,application/json,.csv,text/csv,.obj,.stl,.glb,.gltf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
@@ -86,7 +86,7 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
           e.target.value = ''
         }}
       />
-      <Button variant="outline" onClick={() => fileRef.current?.click()} title="Import SVG, bitmap silhouette, or JSON/CSV 3D points">
+      <Button variant="outline" onClick={() => fileRef.current?.click()} title="Import SVG, image, 3D model (OBJ, STL, GLB) or JSON/CSV points">
         <Upload /> Import
       </Button>
 

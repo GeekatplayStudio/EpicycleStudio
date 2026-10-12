@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { useStudio } from '@/store/useStudio'
 import type { SpectrumData } from '@/store/useSpectrum'
 import { evalComplexChain, evalDepth, sumRadii } from '@/core/math/evaluate'
+import type { Point3 } from '@/core/types/epicycle'
 import type { RealTerm } from '@/core/math/evaluate'
 import { canvasRegistry } from '@/components/Canvas/canvasRegistry'
 import { CHAIN_GAP, sceneBox, zAnchorX } from '@/components/Canvas/sceneLayout'
@@ -84,6 +85,98 @@ export function Epicycle3D({ data }: { data: SpectrumData }) {
     scene.add(pen)
     const EMPTY = [new THREE.Vector3(), new THREE.Vector3()]
 
+    // --- imported model wireframe -------------------------------------------
+    const modelMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.18 })
+    const modelLines = new THREE.LineSegments(new THREE.BufferGeometry(), modelMat)
+    scene.add(modelLines)
+    let modelRef: unknown = null
+    const sectionPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, 2.4),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    scene.add(sectionPlane)
+
+    // --- 3D sketching -------------------------------------------------------
+    const drawPlaneMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.2, 3.2),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    const drawGrid = new THREE.GridHelper(3.2, 16)
+    drawGrid.rotation.x = Math.PI / 2
+    ;(drawGrid.material as THREE.LineBasicMaterial).transparent = true
+    ;(drawGrid.material as THREE.LineBasicMaterial).opacity = 0.25
+    drawPlaneMesh.add(drawGrid)
+    scene.add(drawPlaneMesh)
+    const strokeMat = new THREE.LineBasicMaterial()
+    const stroke = new THREE.Line(new THREE.BufferGeometry(), strokeMat)
+    scene.add(stroke)
+    const mathPlane = new THREE.Plane()
+    const raycaster = new THREE.Raycaster()
+    const strokePts: THREE.Vector3[] = []
+    let sketching = false
+
+    const updateDrawPlane = () => {
+      const s = useStudio.getState()
+      const normal = new THREE.Vector3()
+      if (s.drawPlane === 'screen') camera.getWorldDirection(normal).negate()
+      else if (s.drawPlane === 'xy') normal.set(0, 0, 1)
+      else if (s.drawPlane === 'xz') normal.set(0, 1, 0)
+      else normal.set(1, 0, 0)
+      const origin = controls.target.clone().add(normal.clone().multiplyScalar(s.drawOffset))
+      mathPlane.setFromNormalAndCoplanarPoint(normal, origin)
+      drawPlaneMesh.position.copy(origin)
+      drawPlaneMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
+    }
+    const pointOnPlane = (e: PointerEvent): THREE.Vector3 | null => {
+      const r = renderer.domElement.getBoundingClientRect()
+      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
+      raycaster.setFromCamera(ndc, camera)
+      const hit = new THREE.Vector3()
+      return raycaster.ray.intersectPlane(mathPlane, hit) ? hit : null
+    }
+    const onDown = (e: PointerEvent) => {
+      if (useStudio.getState().tool !== 'draw') return
+      if (e.button !== 0) return
+      e.preventDefault()
+      updateDrawPlane()
+      const p = pointOnPlane(e)
+      if (!p) return
+      renderer.domElement.setPointerCapture(e.pointerId)
+      sketching = true
+      strokePts.length = 0
+      strokePts.push(p)
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!sketching) return
+      const p = pointOnPlane(e)
+      if (!p) return
+      const last = strokePts[strokePts.length - 1]
+      if (last.distanceTo(p) > 0.004) strokePts.push(p)
+      stroke.geometry.setFromPoints(strokePts)
+    }
+    const onUp = (e: PointerEvent) => {
+      if (!sketching) return
+      sketching = false
+      renderer.domElement.releasePointerCapture(e.pointerId)
+      const st = useStudio.getState()
+      if (strokePts.length >= 8) {
+        // close: snap when the stroke ends near its start
+        if (strokePts[0].distanceTo(strokePts[strokePts.length - 1]) < 0.06) strokePts.pop()
+        const pts: Point3[] = strokePts.map((v) => ({ x: v.x, y: -v.y, z: v.z }))
+        const smooth = smooth3(pts, 2)
+        if (st.drawAppend && st.rawPoints.length >= 3) st.appendPoints(smooth)
+        else st.setPoints(smooth, '3D sketch', { is3D: true })
+        st.setTool('view')
+      }
+      strokePts.length = 0
+      stroke.geometry.setFromPoints(EMPTY)
+    }
+    renderer.domElement.addEventListener('pointerdown', onDown)
+    renderer.domElement.addEventListener('pointermove', onMove)
+    renderer.domElement.addEventListener('pointerup', onUp)
+    renderer.domElement.addEventListener('pointercancel', onUp)
+    renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault())
+
     const resize = () => {
       const w = host.clientWidth || 1
       const h = host.clientHeight || 1
@@ -115,7 +208,53 @@ export function Epicycle3D({ data }: { data: SpectrumData }) {
       ghostMat.color.set(s.palette.ghost)
       ;(pen.material as THREE.MeshBasicMaterial).color.set(s.palette.pen)
 
+      // Sketch mode: orbit only with the right/middle button; show the plane.
+      const drawing = s.tool === 'draw'
+      controls.mouseButtons.LEFT = drawing ? null : THREE.MOUSE.ROTATE
+      drawPlaneMesh.visible = drawing
+      stroke.visible = drawing
+      if (drawing) {
+        updateDrawPlane()
+        ;(drawPlaneMesh.material as THREE.MeshBasicMaterial).color.set(s.palette.trail)
+        ;(drawGrid.material as THREE.LineBasicMaterial).color.set(s.palette.trail)
+        strokeMat.color.set(s.palette.trail)
+      }
+
+      // Model wireframe + section plane.
+      if (s.model !== modelRef) {
+        modelRef = s.model
+        if (s.model) {
+          const pos: number[] = []
+          const { positions, index } = s.model
+          const seen = new Set<string>()
+          for (let i = 0; i < index.length; i += 3) {
+            for (let e = 0; e < 3; e++) {
+              const a = index[i + e]
+              const b = index[i + ((e + 1) % 3)]
+              const k = a < b ? `${a}_${b}` : `${b}_${a}`
+              if (seen.has(k)) continue
+              seen.add(k)
+              pos.push(positions[a * 3], -positions[a * 3 + 1], positions[a * 3 + 2], positions[b * 3], -positions[b * 3 + 1], positions[b * 3 + 2])
+            }
+          }
+          modelLines.geometry.dispose()
+          modelLines.geometry = new THREE.BufferGeometry()
+          modelLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+        }
+      }
+      modelLines.visible = !!s.model && s.showModel
+      modelMat.color.set(s.palette.circles)
+      sectionPlane.visible = !!s.model && s.showModel && s.modelMode === 'section'
+      if (sectionPlane.visible) {
+        ;(sectionPlane.material as THREE.MeshBasicMaterial).color.set(s.palette.trail)
+        const n = s.sectionAxis === 'x' ? new THREE.Vector3(1, 0, 0) : s.sectionAxis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1)
+        const off = s.sectionAxis === 'y' ? -s.sectionOffset : s.sectionOffset
+        sectionPlane.position.copy(n.clone().multiplyScalar(off))
+        sectionPlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n)
+      }
+
       if (!d.hasShape) {
+        controls.update()
         renderer.render(scene, camera)
         return
       }
@@ -241,7 +380,7 @@ export function Epicycle3D({ data }: { data: SpectrumData }) {
       pen.position.copy(penPos)
 
       // Fit the camera when the layout changes, then leave orbiting to the user.
-      const fitSig = `${s.mode}|${d.K}|${d.contour.n}|${d.is3D}`
+      const fitSig = `${s.mode}|${d.K}|${d.contour.n}|${d.is3D}|${s.sourceName}`
       if (fitSig !== lastFit) {
         lastFit = fitSig
         const box = sceneBox(s.mode, sumRx, sumRy, sumRadii(d.harmonics), sumRz)
@@ -264,6 +403,12 @@ export function Epicycle3D({ data }: { data: SpectrumData }) {
     return () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
+      renderer.domElement.removeEventListener('pointerdown', onDown)
+      renderer.domElement.removeEventListener('pointermove', onMove)
+      renderer.domElement.removeEventListener('pointerup', onUp)
+      renderer.domElement.removeEventListener('pointercancel', onUp)
+      modelLines.geometry.dispose()
+      stroke.geometry.dispose()
       controls.dispose()
       circleGeo.dispose()
       for (const l of [...armLines, proj, trail, ghost]) l.geometry.dispose()
@@ -273,11 +418,27 @@ export function Epicycle3D({ data }: { data: SpectrumData }) {
     }
   }, [])
 
+  const tool = useStudio((s) => s.tool)
   return (
-    <div ref={hostRef} className="absolute inset-0 h-full w-full">
+    <div ref={hostRef} className={`absolute inset-0 h-full w-full ${tool === 'draw' ? '[&>canvas]:cursor-crosshair' : ''}`}>
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-full border border-line bg-bg-2/80 px-3 py-1 font-mono text-[11px] text-fg-3 backdrop-blur">
         drag to orbit · wheel to zoom
       </div>
     </div>
   )
+}
+
+/** Closed-loop moving average in 3D. */
+function smooth3(pts: Point3[], passes = 1): Point3[] {
+  let out = pts
+  for (let p = 0; p < passes; p++) {
+    const m = out.length
+    out = out.map((_, i) => {
+      const a = out[(i - 1 + m) % m]
+      const b = out[i]
+      const c = out[(i + 1) % m]
+      return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3, z: (a.z + b.z + c.z) / 3 }
+    })
+  }
+  return out
 }

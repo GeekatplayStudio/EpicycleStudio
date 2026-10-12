@@ -1,4 +1,5 @@
-import { N_OPTIONS, useStudio, type Palette } from '@/store/useStudio'
+import { N_OPTIONS, useStudio, type ModelMode, type Palette } from '@/store/useStudio'
+import type { Axis3 } from '@/core/tracer/meshLoop'
 import { Divider, Label, Segmented, Toggle } from '@/components/ui/primitives'
 import type { LayerToggles, SortMode } from '@/core/types/epicycle'
 import type { DepthMode } from '@/core/math/arcLength'
@@ -39,6 +40,14 @@ export function ParameterPanel() {
   const depthHarmonic = useStudio((s) => s.depthHarmonic)
   const setDepth = useStudio((s) => s.setDepth)
   const hasSourceDepth = useStudio((s) => s.rawPoints.some((p) => p.z !== 0))
+  const model = useStudio((s) => s.model)
+  const modelName = useStudio((s) => s.modelName)
+  const modelMode = useStudio((s) => s.modelMode)
+  const sectionAxis = useStudio((s) => s.sectionAxis)
+  const sectionOffset = useStudio((s) => s.sectionOffset)
+  const showModel = useStudio((s) => s.showModel)
+  const setModelOptions = useStudio((s) => s.setModelOptions)
+  const setModel = useStudio((s) => s.setModel)
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -70,6 +79,48 @@ export function ParameterPanel() {
           ]}
         />
       </section>
+
+      {model && (
+        <>
+          <Divider />
+          <section className="flex flex-col gap-2">
+            <Label hint={`${model.index.length / 3} tris`}>Model · {modelName}</Label>
+            <Segmented<ModelMode>
+              size="sm"
+              value={modelMode}
+              onChange={(m) => setModelOptions({ modelMode: m })}
+              options={[
+                { value: 'boundary', label: 'Boundary loop', title: 'Longest open edge of the mesh' },
+                { value: 'section', label: 'Cross-section', title: 'Slice with an axis-aligned plane' },
+              ]}
+            />
+            {modelMode === 'section' && (
+              <>
+                <Segmented<Axis3>
+                  size="sm"
+                  value={sectionAxis}
+                  onChange={(a) => setModelOptions({ sectionAxis: a })}
+                  options={[
+                    { value: 'x', label: 'X plane' },
+                    { value: 'y', label: 'Y plane' },
+                    { value: 'z', label: 'Z plane' },
+                  ]}
+                />
+                <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                  <span className="flex justify-between">
+                    Section offset <span className="font-mono tabular-nums">{sectionOffset.toFixed(2)}</span>
+                  </span>
+                  <input type="range" min={-0.98} max={0.98} step={0.01} value={sectionOffset} onChange={(e) => setModelOptions({ sectionOffset: Number(e.target.value) })} aria-label="Section offset" />
+                </label>
+              </>
+            )}
+            <Toggle checked={showModel} onChange={(v) => setModelOptions({ showModel: v })} label="Show model wireframe" />
+            <button type="button" onClick={() => setModel(null)} className="self-start text-[12px] text-fg-3 hover:text-fg">
+              Remove model
+            </button>
+          </section>
+        </>
+      )}
 
       <Divider />
 

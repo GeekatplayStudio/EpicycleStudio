@@ -5,6 +5,7 @@ import { useImport } from '@/hooks/useImport'
 import { EpicycleRenderer } from './EpicycleRenderer'
 import { DrawingSurface } from './DrawingSurface'
 import { OverlayControls } from './OverlayControls'
+import { Draw3DControls } from './Draw3DControls'
 import { Button, Kbd } from '@/components/ui/primitives'
 import { Pen } from '@/components/ui/icons'
 
@@ -45,7 +46,8 @@ export function Viewport({ data }: { data: SpectrumData }) {
         </Suspense>
       )}
 
-      {tool === 'draw' && <DrawingSurface />}
+      {tool === 'draw' && viewport === '2d' && <DrawingSurface />}
+      {tool === 'draw' && viewport === '3d' && <Draw3DControls />}
       {tool !== 'draw' && <OverlayControls data={data} />}
 
       {!data.hasShape && tool !== 'draw' && (
@@ -53,7 +55,7 @@ export function Viewport({ data }: { data: SpectrumData }) {
           <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
             <div className="text-[15px] font-medium">Nothing to decompose yet</div>
             <p className="max-w-xs text-[12.5px] leading-relaxed text-fg-3">
-              Draw a closed shape, pick a preset, or drop an SVG / silhouette image onto the viewport.
+              Draw a closed shape in 2D or 3D, pick a preset, or drop an SVG, image or 3D model onto the viewport.
             </p>
             <Button variant="accent" onClick={() => setTool('draw')}>
               <Pen /> Start drawing <Kbd>D</Kbd>

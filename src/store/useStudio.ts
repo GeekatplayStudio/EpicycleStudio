@@ -2,8 +2,11 @@ import { create } from 'zustand'
 import type { LayerToggles, Point, Point3, RenderMode, SortMode } from '@/core/types/epicycle'
 import { normalize, resampleUniform, smoothClosed, type DepthMode } from '@/core/math/arcLength'
 import { ALL_PRESETS, PRESETS } from '@/presets/shapes'
+import { extractLoop, type Axis3, type MeshData } from '@/core/tracer/meshLoop'
 
 export type Tool = 'draw' | 'view'
+export type DrawPlane = 'screen' | 'xy' | 'xz' | 'yz'
+export type ModelMode = 'boundary' | 'section'
 export type Theme = 'dark' | 'light'
 export type Viewport = '2d' | '3d'
 
@@ -42,6 +45,17 @@ export interface StudioState {
   depthMode: DepthMode
   depthAmplitude: number
   depthHarmonic: number
+  /** Imported 3D model (normalised to the unit box) used for loop extraction. */
+  model: MeshData | null
+  modelName: string
+  modelMode: ModelMode
+  sectionAxis: Axis3
+  sectionOffset: number
+  showModel: boolean
+  /** 3D sketching: drawing plane orientation and offset along its normal. */
+  drawPlane: DrawPlane
+  drawOffset: number
+  drawAppend: boolean
   n: number
   k: number
   mode: RenderMode
@@ -59,7 +73,11 @@ export interface StudioState {
   exportOpen: boolean
   toast: string | null
 
-  setPoints: (pts: (Point | Point3)[], sourceName: string, opts?: { smooth?: boolean; is3D?: boolean }) => void
+  setPoints: (pts: (Point | Point3)[], sourceName: string, opts?: { smooth?: boolean; is3D?: boolean; keepScale?: boolean }) => void
+  appendPoints: (pts: Point3[]) => void
+  setModel: (mesh: MeshData | null, name?: string) => void
+  setModelOptions: (patch: Partial<{ modelMode: ModelMode; sectionAxis: Axis3; sectionOffset: number; showModel: boolean }>) => void
+  setDrawPlane: (patch: Partial<{ drawPlane: DrawPlane; drawOffset: number; drawAppend: boolean }>) => void
   setDepth: (patch: Partial<{ depthMode: DepthMode; depthAmplitude: number; depthHarmonic: number }>) => void
   loadPreset: (id: string) => void
   clear: () => void
@@ -100,6 +118,7 @@ function fromUrl() {
     theme,
     t: Number(q.get('t')) || 0,
     playing: q.get('paused') === null,
+    tool: (q.get('tool') === 'draw' ? 'draw' : 'view') as Tool,
     depthMode: (['flat', 'wave', 'bowl', 'saddle', 'ramp'].includes(q.get('depth') ?? '') ? q.get('depth') : null) as DepthMode | null,
   }
 }
@@ -112,6 +131,15 @@ export const useStudio = create<StudioState>((set, get) => ({
   depthMode: init.preset.is3D ? 'source' : (init.depthMode ?? 'flat'),
   depthAmplitude: 0.5,
   depthHarmonic: 2,
+  model: null,
+  modelName: '',
+  modelMode: 'boundary',
+  sectionAxis: 'y',
+  sectionOffset: 0,
+  showModel: true,
+  drawPlane: 'screen',
+  drawOffset: 0,
+  drawAppend: false,
   n: init.n,
   k: Math.min(init.k, Math.floor(init.n / 2) - 1),
   mode: init.mode,
@@ -122,7 +150,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   layers: { circles: true, arms: true, projections: true, ghost: true, trail: true },
   theme: init.theme,
   palette: init.theme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE,
-  tool: 'view',
+  tool: init.tool,
   viewport: init.viewport,
   extrudeTime: false,
   exportOpen: false,
@@ -134,7 +162,7 @@ export const useStudio = create<StudioState>((set, get) => ({
     const is3D = opts?.is3D ?? pts.some((q) => 'z' in q && q.z !== 0)
     const depthMode: DepthMode = is3D ? 'source' : get().depthMode === 'source' ? 'flat' : get().depthMode
     set({
-      rawPoints: normalize(p),
+      rawPoints: opts?.keepScale ? p.map((q) => ({ x: q.x, y: q.y, z: 'z' in q ? q.z : 0 })) : normalize(p),
       sourceName,
       depthMode,
       t: 0,
@@ -143,6 +171,23 @@ export const useStudio = create<StudioState>((set, get) => ({
       viewport: is3D ? '3d' : get().viewport,
     })
   },
+  appendPoints: (pts) => {
+    const cur = get().rawPoints
+    if (cur.length < 3) return get().setPoints(pts, '3D sketch', { is3D: true })
+    set({ rawPoints: normalize([...cur, ...pts]), sourceName: '3D sketch', depthMode: 'source', t: 0, playing: true, viewport: '3d' })
+  },
+  setModel: (mesh, name = 'Model') => {
+    set({ model: mesh, modelName: name })
+    if (mesh) {
+      set({ viewport: '3d', showModel: true })
+      applyModel()
+    }
+  },
+  setModelOptions: (patch) => {
+    set(patch)
+    if (patch.modelMode !== undefined || patch.sectionAxis !== undefined || patch.sectionOffset !== undefined) applyModel()
+  },
+  setDrawPlane: (patch) => set(patch),
   setDepth: (patch) => {
     const next = { ...patch }
     if (next.depthMode && next.depthMode !== 'flat' && next.depthMode !== 'source' && get().viewport === '2d') set({ viewport: '3d' })
@@ -176,6 +221,21 @@ export const useStudio = create<StudioState>((set, get) => ({
   setExportOpen: (exportOpen) => set({ exportOpen }),
   notify: (toast) => set({ toast }),
 }))
+
+/** Re-extract the loop from the current model with the current options. */
+function applyModel() {
+  const s = useStudio.getState()
+  if (!s.model) return
+  const { loop, usedSection } = extractLoop(s.model, s.modelMode, s.sectionAxis, s.sectionOffset)
+  if (!loop) {
+    s.notify('No loop found at this section. Move the offset or change the axis.')
+    return
+  }
+  const label = usedSection ? `${s.modelName} · section ${s.sectionAxis} = ${s.sectionOffset.toFixed(2)}` : `${s.modelName} · boundary`
+  s.setPoints(loop, label, { is3D: true, keepScale: true })
+  if (usedSection && s.modelMode === 'boundary') set3({ modelMode: 'section' })
+}
+const set3 = (p: Partial<StudioState>) => useStudio.setState(p)
 
 /** Resampled contour for the current points and N. */
 export function sampleContour(points: Point[], n: number) {
