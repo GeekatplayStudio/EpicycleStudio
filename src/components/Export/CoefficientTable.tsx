@@ -25,7 +25,7 @@ export function CoefficientTable({ data }: { data: SpectrumData }) {
           <thead className="sticky top-0 bg-bg-2 text-fg-3">
             {form === 'real' ? (
               <tr>
-                {['k', 'a_k', 'b_k', 'c_k', 'd_k'].map((h) => (
+                {['k', 'a_k', 'b_k', 'c_k', 'd_k', ...(data.is3D ? ['e_k', 'f_k'] : [])].map((h) => (
                   <th key={h} className="px-2 py-1.5 text-right font-medium first:text-left">
                     {h}
                   </th>
@@ -50,6 +50,12 @@ export function CoefficientTable({ data }: { data: SpectrumData }) {
                     <td className="px-2 py-1 text-right">{f(real.b[k])}</td>
                     <td className="px-2 py-1 text-right">{f(real.c[k])}</td>
                     <td className="px-2 py-1 text-right">{f(real.d[k])}</td>
+                    {data.is3D && (
+                      <>
+                        <td className="px-2 py-1 text-right">{f(real.e[k])}</td>
+                        <td className="px-2 py-1 text-right">{f(real.f[k])}</td>
+                      </>
+                    )}
                   </tr>
                 ))
               : data.harmonics.map((h) => (

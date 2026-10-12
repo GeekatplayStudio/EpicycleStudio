@@ -107,6 +107,9 @@ export function computeSpectrum(contour: Contour): Spectrum {
   const n = contour.n
   const { re: Zr, im: Zi } = dft(contour.xs, contour.ys)
   const half = Math.floor(n / 2)
+  const is3D = contour.is3D
+  // Depth is a plain real sequence: one more transform only when needed.
+  const Wz = is3D ? dft(contour.zs, new Float64Array(n)) : null
 
   const complex: Harmonic[] = []
   for (const k of frequencyOrder(n)) {
@@ -121,6 +124,8 @@ export function computeSpectrum(contour: Contour): Spectrum {
   const b = new Float64Array(kMax + 1)
   const c = new Float64Array(kMax + 1)
   const d = new Float64Array(kMax + 1)
+  const e = new Float64Array(kMax + 1)
+  const f = new Float64Array(kMax + 1)
   for (let k = 0; k <= kMax; k++) {
     const ip = k % n
     const im_ = ((-k % n) + n) % n
@@ -135,9 +140,13 @@ export function computeSpectrum(contour: Contour): Spectrum {
     b[k] = (-2 / n) * Xi
     c[k] = (2 / n) * Yr
     d[k] = (-2 / n) * Yi
+    if (Wz) {
+      e[k] = (2 / n) * Wz.re[ip]
+      f[k] = (-2 / n) * Wz.im[ip]
+    }
   }
   // Nyquist term for even N appears only once; the real series uses it fully.
-  return { n, complex, real: { kMax, a, b, c, d } }
+  return { n, complex, real: { kMax, a, b, c, d, e, f }, is3D }
 }
 
 /** Maximum harmonic degree K available for a given N. */

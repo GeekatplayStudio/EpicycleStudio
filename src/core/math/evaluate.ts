@@ -38,9 +38,11 @@ export interface RealTerm {
   phase: number
 }
 
-export function realTerms(series: RealSeries, axis: 'x' | 'y', K: number, sort: SortMode): RealTerm[] {
-  const A = axis === 'x' ? series.a : series.c
-  const B = axis === 'x' ? series.b : series.d
+export type Axis = 'x' | 'y' | 'z'
+
+export function realTerms(series: RealSeries, axis: Axis, K: number, sort: SortMode): RealTerm[] {
+  const A = axis === 'x' ? series.a : axis === 'y' ? series.c : series.e
+  const B = axis === 'x' ? series.b : axis === 'y' ? series.d : series.f
   const terms: RealTerm[] = []
   const kMax = Math.min(K, series.kMax)
   for (let k = 1; k <= kMax; k++) {
@@ -80,18 +82,28 @@ export function evalRealChain(terms: RealTerm[], t: number, origin: Point, axis:
   return { centers, tips, radii, pen: { x, y } }
 }
 
-/** x(t), y(t) from the truncated real series. */
-export function evalRealPoint(series: RealSeries, K: number, t: number): Point {
+/** x(t), y(t), z(t) from the truncated real series. */
+export function evalRealPoint(series: RealSeries, K: number, t: number): Point & { z: number } {
   const kMax = Math.min(K, series.kMax)
   let x = series.a[0] / 2
   let y = series.c[0] / 2
+  let z = series.e[0] / 2
   for (let k = 1; k <= kMax; k++) {
     const c = Math.cos(k * t)
     const s = Math.sin(k * t)
     x += series.a[k] * c + series.b[k] * s
     y += series.c[k] * c + series.d[k] * s
+    z += series.e[k] * c + series.f[k] * s
   }
-  return { x, y }
+  return { x, y, z }
+}
+
+/** Depth z(t) alone from the truncated real series. */
+export function evalDepth(series: RealSeries, K: number, t: number): number {
+  const kMax = Math.min(K, series.kMax)
+  let z = series.e[0] / 2
+  for (let k = 1; k <= kMax; k++) z += series.e[k] * Math.cos(k * t) + series.f[k] * Math.sin(k * t)
+  return z
 }
 
 /** Reconstruct the truncated curve at the original N sample instants. */
@@ -99,6 +111,7 @@ export function reconstruct(spectrum: Spectrum, K: number): Contour {
   const n = spectrum.n
   const xs = new Float64Array(n)
   const ys = new Float64Array(n)
+  const zs = new Float64Array(n)
   const active = spectrum.complex.filter((h) => Math.abs(h.k) <= K)
   for (let i = 0; i < n; i++) {
     const t = (2 * Math.PI * i) / n
@@ -111,8 +124,9 @@ export function reconstruct(spectrum: Spectrum, K: number): Contour {
     }
     xs[i] = x
     ys[i] = y
+    if (spectrum.is3D) zs[i] = evalDepth(spectrum.real, K, t)
   }
-  return { n, xs, ys }
+  return { n, xs, ys, zs, is3D: spectrum.is3D }
 }
 
 /** Root-mean-square reconstruction error (Section 2.2). */
@@ -122,7 +136,8 @@ export function rmse(actual: Contour, approx: Contour): number {
   for (let i = 0; i < n; i++) {
     const dx = actual.xs[i] - approx.xs[i]
     const dy = actual.ys[i] - approx.ys[i]
-    acc += dx * dx + dy * dy
+    const dz = actual.zs[i] - approx.zs[i]
+    acc += dx * dx + dy * dy + dz * dz
   }
   return Math.sqrt(acc / n)
 }

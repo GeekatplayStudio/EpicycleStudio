@@ -1,9 +1,11 @@
-import type { Point } from '@/core/types/epicycle'
+import type { Point, Point3 } from '@/core/types/epicycle'
 
 export interface Preset {
   id: string
   name: string
-  build: () => Point[]
+  /** True for closed space curves (non-zero depth). */
+  is3D?: boolean
+  build: () => (Point | Point3)[]
 }
 
 const sample = (f: (u: number) => Point, m = 720): Point[] => Array.from({ length: m }, (_, i) => f((2 * Math.PI * i) / m))
@@ -84,3 +86,70 @@ export const PRESETS: Preset[] = [
     ],
   },
 ]
+
+const sample3 = (f: (u: number) => Point3, m = 900): Point3[] => Array.from({ length: m }, (_, i) => f((2 * Math.PI * i) / m))
+
+/** Closed space curves. y is negated so "up" in the formula points up on screen. */
+export const PRESETS_3D: Preset[] = [
+  {
+    id: 'trefoil',
+    name: 'Trefoil knot',
+    is3D: true,
+    build: () =>
+      sample3((u) => ({
+        x: Math.sin(u) + 2 * Math.sin(2 * u),
+        y: -(Math.cos(u) - 2 * Math.cos(2 * u)),
+        z: -Math.sin(3 * u),
+      })),
+  },
+  {
+    id: 'torus-knot',
+    name: 'Torus knot (3,5)',
+    is3D: true,
+    build: () =>
+      sample3((u) => {
+        const p = 3
+        const q = 5
+        const r = 2 + Math.cos(q * u)
+        return { x: r * Math.cos(p * u), y: -r * Math.sin(p * u), z: Math.sin(q * u) }
+      }, 1400),
+  },
+  {
+    id: 'viviani',
+    name: 'Viviani curve',
+    is3D: true,
+    build: () => sample3((u) => ({ x: 1 + Math.cos(u), y: -Math.sin(u), z: 2 * Math.sin(u / 2) })),
+  },
+  {
+    id: 'seam',
+    name: 'Baseball seam',
+    is3D: true,
+    build: () =>
+      sample3((u) => {
+        const a = 0.4
+        return {
+          x: Math.cos(u) * Math.cos(a * Math.sin(2 * u)),
+          y: -Math.sin(u) * Math.cos(a * Math.sin(2 * u)),
+          z: Math.sin(a * Math.sin(2 * u)) * 2.2,
+        }
+      }),
+  },
+  {
+    id: 'lissajous3',
+    name: 'Lissajous 3·4·5',
+    is3D: true,
+    build: () => sample3((u) => ({ x: Math.sin(3 * u), y: -Math.sin(4 * u + Math.PI / 2), z: Math.sin(5 * u) }), 1400),
+  },
+  {
+    id: 'spring',
+    name: 'Closed spring',
+    is3D: true,
+    build: () =>
+      sample3((u) => {
+        const r = 1 + 0.35 * Math.cos(8 * u)
+        return { x: r * Math.cos(u), y: -r * Math.sin(u), z: 0.35 * Math.sin(8 * u) }
+      }, 1600),
+  },
+]
+
+export const ALL_PRESETS: Preset[] = [...PRESETS, ...PRESETS_3D]

@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useStudio } from '@/store/useStudio'
-import { PRESETS } from '@/presets/shapes'
+import { ALL_PRESETS, PRESETS, PRESETS_3D } from '@/presets/shapes'
 import { useImport } from '@/hooks/useImport'
 import { Button, Segmented } from '@/components/ui/primitives'
 import { Chevron, Cube, Cursor, Download, Logo, Moon, Panel, Pen, Square, Sun, Trash, Upload } from '@/components/ui/icons'
@@ -37,7 +37,7 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
 
       <div className="relative">
         <select
-          value={PRESETS.find((p) => p.name === sourceName)?.id ?? ''}
+          value={ALL_PRESETS.find((p) => p.name === sourceName)?.id ?? ''}
           onChange={(e) => e.target.value && loadPreset(e.target.value)}
           className="h-8 appearance-none rounded-lg border border-line bg-bg-3 pl-3 pr-8 text-[12.5px] text-fg outline-none hover:border-line-2"
           aria-label="Presets"
@@ -45,11 +45,20 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
           <option value="" disabled>
             Presets
           </option>
-          {PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
+          <optgroup label="Flat shapes">
+            {PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="3D curves">
+            {PRESETS_3D.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <Chevron className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-fg-3" />
       </div>
@@ -69,7 +78,7 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
       <input
         ref={fileRef}
         type="file"
-        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/gif,image/bmp"
+        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/gif,image/bmp,.json,application/json,.csv,text/csv"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
@@ -77,7 +86,7 @@ export function TopBar({ dockOpen, onToggleDock }: { dockOpen: boolean; onToggle
           e.target.value = ''
         }}
       />
-      <Button variant="outline" onClick={() => fileRef.current?.click()} title="Import SVG or bitmap silhouette">
+      <Button variant="outline" onClick={() => fileRef.current?.click()} title="Import SVG, bitmap silhouette, or JSON/CSV 3D points">
         <Upload /> Import
       </Button>
 

@@ -15,7 +15,7 @@ function Tex({ tex, display = true }: { tex: string; display?: boolean }) {
 /** KaTeX rendering of the general and numeric truncated series. */
 export function FormulaViewer({ data }: { data: SpectrumData }) {
   const [form, setForm] = useState<'real' | 'complex'>('real')
-  const real = useMemo(() => realSeriesLatex(data.spectrum.real, data.K, 4, 3), [data.spectrum, data.K])
+  const real = useMemo(() => realSeriesLatex(data.spectrum.real, data.K, 4, 3, data.is3D), [data.spectrum, data.K, data.is3D])
   const complex = useMemo(() => complexSeriesLatex(data.harmonics, 5, 3), [data.harmonics])
 
   return (
@@ -34,6 +34,7 @@ export function FormulaViewer({ data }: { data: SpectrumData }) {
           <>
             <Tex tex={GENERAL_FORMS.x} />
             <Tex tex={GENERAL_FORMS.y} />
+            {data.is3D && <Tex tex={GENERAL_FORMS.zDepth} />}
           </>
         ) : (
           <Tex tex={GENERAL_FORMS.z} />
@@ -45,6 +46,7 @@ export function FormulaViewer({ data }: { data: SpectrumData }) {
           <>
             <Tex tex={real.x} />
             <Tex tex={real.y} />
+            {real.z && <Tex tex={real.z} />}
           </>
         ) : (
           <Tex tex={complex} />

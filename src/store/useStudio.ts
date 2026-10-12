@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { LayerToggles, Point, RenderMode, SortMode } from '@/core/types/epicycle'
-import { normalize, resampleUniform, smoothClosed } from '@/core/math/arcLength'
-import { PRESETS } from '@/presets/shapes'
+import type { LayerToggles, Point, Point3, RenderMode, SortMode } from '@/core/types/epicycle'
+import { normalize, resampleUniform, smoothClosed, type DepthMode } from '@/core/math/arcLength'
+import { ALL_PRESETS, PRESETS } from '@/presets/shapes'
 
 export type Tool = 'draw' | 'view'
 export type Theme = 'dark' | 'light'
@@ -35,9 +35,13 @@ export const LIGHT_PALETTE: Palette = {
 }
 
 export interface StudioState {
-  /** Raw, normalized input points (centered, half-extent 1, y down). */
-  rawPoints: Point[]
+  /** Raw, normalized input points (centered, half-extent 1, y down, z = depth). */
+  rawPoints: Point3[]
   sourceName: string
+  /** Depth sculpting for flat inputs; 'source' keeps imported depth. */
+  depthMode: DepthMode
+  depthAmplitude: number
+  depthHarmonic: number
   n: number
   k: number
   mode: RenderMode
@@ -55,7 +59,8 @@ export interface StudioState {
   exportOpen: boolean
   toast: string | null
 
-  setPoints: (pts: Point[], sourceName: string, opts?: { smooth?: boolean }) => void
+  setPoints: (pts: (Point | Point3)[], sourceName: string, opts?: { smooth?: boolean; is3D?: boolean }) => void
+  setDepth: (patch: Partial<{ depthMode: DepthMode; depthAmplitude: number; depthHarmonic: number }>) => void
   loadPreset: (id: string) => void
   clear: () => void
   setN: (n: number) => void
@@ -81,7 +86,7 @@ export const N_OPTIONS = [128, 256, 512, 1024, 2048] as const
 /** Optional initial state from the URL, e.g. ?preset=star&k=12&mode=complex&view=3d&theme=light */
 function fromUrl() {
   const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const preset = PRESETS.find((p) => p.id === q.get('preset')) ?? PRESETS[0]
+  const preset = ALL_PRESETS.find((p) => p.id === q.get('preset')) ?? PRESETS[0]
   const n = Number(q.get('n'))
   const k = Number(q.get('k'))
   const theme: Theme = q.get('theme') === 'light' ? 'light' : 'dark'
@@ -91,10 +96,11 @@ function fromUrl() {
     n: (N_OPTIONS as readonly number[]).includes(n) ? n : 512,
     k: k >= 1 ? Math.floor(k) : 24,
     mode: (q.get('mode') === 'complex' ? 'complex' : 'split') as RenderMode,
-    viewport: (q.get('view') === '3d' ? '3d' : '2d') as Viewport,
+    viewport: (q.get('view') === '3d' || preset.is3D || q.get('depth') ? '3d' : '2d') as Viewport,
     theme,
     t: Number(q.get('t')) || 0,
     playing: q.get('paused') === null,
+    depthMode: (['flat', 'wave', 'bowl', 'saddle', 'ramp'].includes(q.get('depth') ?? '') ? q.get('depth') : null) as DepthMode | null,
   }
 }
 
@@ -103,6 +109,9 @@ const init = fromUrl()
 export const useStudio = create<StudioState>((set, get) => ({
   rawPoints: normalize(init.preset.build()),
   sourceName: init.preset.name,
+  depthMode: init.preset.is3D ? 'source' : (init.depthMode ?? 'flat'),
+  depthAmplitude: 0.5,
+  depthHarmonic: 2,
   n: init.n,
   k: Math.min(init.k, Math.floor(init.n / 2) - 1),
   mode: init.mode,
@@ -121,14 +130,29 @@ export const useStudio = create<StudioState>((set, get) => ({
 
   setPoints: (pts, sourceName, opts) => {
     let p = pts
-    if (opts?.smooth) p = smoothClosed(p, 2, 2)
-    set({ rawPoints: normalize(p), sourceName, t: 0, tool: 'view', playing: true })
+    if (opts?.smooth) p = smoothClosed(p as Point[], 2, 2)
+    const is3D = opts?.is3D ?? pts.some((q) => 'z' in q && q.z !== 0)
+    const depthMode: DepthMode = is3D ? 'source' : get().depthMode === 'source' ? 'flat' : get().depthMode
+    set({
+      rawPoints: normalize(p),
+      sourceName,
+      depthMode,
+      t: 0,
+      tool: 'view',
+      playing: true,
+      viewport: is3D ? '3d' : get().viewport,
+    })
+  },
+  setDepth: (patch) => {
+    const next = { ...patch }
+    if (next.depthMode && next.depthMode !== 'flat' && next.depthMode !== 'source' && get().viewport === '2d') set({ viewport: '3d' })
+    set(next)
   },
   loadPreset: (id) => {
-    const preset = PRESETS.find((p) => p.id === id)
-    if (preset) get().setPoints(preset.build(), preset.name)
+    const preset = ALL_PRESETS.find((p) => p.id === id)
+    if (preset) get().setPoints(preset.build(), preset.name, { is3D: !!preset.is3D })
   },
-  clear: () => set({ rawPoints: [], sourceName: 'Empty', t: 0, tool: 'draw' }),
+  clear: () => set({ rawPoints: [], sourceName: 'Empty', t: 0, tool: 'draw', depthMode: 'flat' }),
   setN: (n) => set({ n, k: Math.min(get().k, Math.floor(n / 2) - 1) }),
   setK: (k) => set({ k: Math.max(1, Math.min(k, Math.floor(get().n / 2) - 1)) }),
   setMode: (mode) => set({ mode }),

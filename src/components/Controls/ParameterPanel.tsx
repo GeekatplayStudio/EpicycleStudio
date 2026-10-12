@@ -1,6 +1,7 @@
 import { N_OPTIONS, useStudio, type Palette } from '@/store/useStudio'
 import { Divider, Label, Segmented, Toggle } from '@/components/ui/primitives'
 import type { LayerToggles, SortMode } from '@/core/types/epicycle'
+import type { DepthMode } from '@/core/math/arcLength'
 import { ModeSelector } from './ModeSelector'
 
 const LAYERS: { key: keyof LayerToggles; label: string }[] = [
@@ -33,6 +34,11 @@ export function ParameterPanel() {
   const extrudeTime = useStudio((s) => s.extrudeTime)
   const setExtrudeTime = useStudio((s) => s.setExtrudeTime)
   const viewport = useStudio((s) => s.viewport)
+  const depthMode = useStudio((s) => s.depthMode)
+  const depthAmplitude = useStudio((s) => s.depthAmplitude)
+  const depthHarmonic = useStudio((s) => s.depthHarmonic)
+  const setDepth = useStudio((s) => s.setDepth)
+  const hasSourceDepth = useStudio((s) => s.rawPoints.some((p) => p.z !== 0))
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -63,6 +69,38 @@ export function ParameterPanel() {
             { value: 'amplitude', label: 'Amplitude', title: 'Largest radius first (stable base circles)' },
           ]}
         />
+      </section>
+
+      <Divider />
+
+      <section className="flex flex-col gap-2">
+        <Label hint={depthMode === 'flat' ? 'z = 0' : depthMode === 'source' ? 'from input' : `A = ${depthAmplitude.toFixed(2)}`}>Depth · z(t)</Label>
+        <Segmented<DepthMode>
+          size="sm"
+          className="flex-wrap"
+          value={depthMode}
+          onChange={(m) => setDepth({ depthMode: m })}
+          options={[
+            { value: 'flat', label: 'Flat' },
+            ...(hasSourceDepth ? [{ value: 'source' as DepthMode, label: 'Source' }] : []),
+            { value: 'wave', label: 'Wave', title: 'z = A·sin(m·t)' },
+            { value: 'bowl', label: 'Bowl', title: 'z = A·(x² + y² − ½)' },
+            { value: 'saddle', label: 'Saddle', title: 'z = 2A·x·y' },
+            { value: 'ramp', label: 'Ramp', title: 'z = A·y' },
+          ]}
+        />
+        {depthMode !== 'flat' && depthMode !== 'source' && (
+          <>
+            <input type="range" min={0.05} max={1.5} step={0.01} value={depthAmplitude} onChange={(e) => setDepth({ depthAmplitude: Number(e.target.value) })} aria-label="Depth amplitude" />
+            {depthMode === 'wave' && (
+              <label className="flex items-center justify-between text-[12px] text-fg-2">
+                Wave harmonic m
+                <input type="number" min={1} max={32} value={depthHarmonic} onChange={(e) => setDepth({ depthHarmonic: Math.max(1, Math.min(32, Number(e.target.value) || 1)) })} className="h-7 w-16 rounded-md border border-line bg-bg-3 px-2 font-mono text-[12px] text-fg tabular-nums outline-none" />
+              </label>
+            )}
+          </>
+        )}
+        <p className="text-[11.5px] leading-relaxed text-fg-3">A third Fourier series z(t) is fitted to the depth and drawn as its own chain in the 3D view.</p>
       </section>
 
       <Divider />

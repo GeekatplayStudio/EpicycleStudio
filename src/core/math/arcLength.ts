@@ -1,4 +1,4 @@
-import type { Contour, Point } from '@/core/types/epicycle'
+import type { Contour, Point, Point3 } from '@/core/types/epicycle'
 
 /** Removes consecutive duplicates / sub-pixel jitter. */
 export function dedupe(points: Point[], eps = 1e-6): Point[] {
@@ -52,30 +52,36 @@ export function pathLength(points: Point[], closed = true): number {
  * Resample a closed polyline into `n` points at equidistant arc length
  * s_i = i · L / n.
  */
-export function resampleUniform(points: Point[], n: number): Contour {
-  const pts = dedupe(points)
+export function resampleUniform(points: (Point | Point3)[], n: number): Contour {
+  const pts = dedupe(points as Point[]) as (Point | Point3)[]
   const xs = new Float64Array(n)
   const ys = new Float64Array(n)
-  if (pts.length === 0) return { n, xs, ys }
+  const zs = new Float64Array(n)
+  const zOf = (p: Point | Point3) => ('z' in p && Number.isFinite(p.z) ? p.z : 0)
+  let is3D = false
+  for (const p of pts) if (zOf(p) !== 0) is3D = true
+  if (pts.length === 0) return { n, xs, ys, zs, is3D: false }
   if (pts.length === 1) {
     xs.fill(pts[0].x)
     ys.fill(pts[0].y)
-    return { n, xs, ys }
+    zs.fill(zOf(pts[0]))
+    return { n, xs, ys, zs, is3D }
   }
 
   const m = pts.length
-  // Cumulative arc length including the closing segment.
+  // Cumulative arc length (3D) including the closing segment.
   const cum = new Float64Array(m + 1)
   for (let i = 0; i < m; i++) {
     const a = pts[i]
     const b = pts[(i + 1) % m]
-    cum[i + 1] = cum[i] + Math.hypot(b.x - a.x, b.y - a.y)
+    cum[i + 1] = cum[i] + Math.hypot(b.x - a.x, b.y - a.y, zOf(b) - zOf(a))
   }
   const L = cum[m]
   if (L === 0) {
     xs.fill(pts[0].x)
     ys.fill(pts[0].y)
-    return { n, xs, ys }
+    zs.fill(zOf(pts[0]))
+    return { n, xs, ys, zs, is3D }
   }
 
   let seg = 0
@@ -88,8 +94,9 @@ export function resampleUniform(points: Point[], n: number): Contour {
     const u = segLen > 0 ? (s - cum[seg]) / segLen : 0
     xs[i] = a.x + (b.x - a.x) * u
     ys[i] = a.y + (b.y - a.y) * u
+    zs[i] = zOf(a) + (zOf(b) - zOf(a)) * u
   }
-  return { n, xs, ys }
+  return { n, xs, ys, zs, is3D }
 }
 
 /** Axis-aligned bounds of a point list. */
@@ -108,17 +115,56 @@ export function bounds(points: Point[]) {
 }
 
 /**
- * Translate to the centroid of the bounding box and scale so the larger
- * half-extent equals 1. Keeps y pointing down (screen convention) so that
- * drawings and traces match visually.
+ * Translate to the centre of the bounding box and scale so the largest
+ * half-extent (over x, y and z) equals 1. Keeps y pointing down (screen
+ * convention) so that drawings and traces match visually.
  */
-export function normalize(points: Point[]): Point[] {
-  if (points.length === 0) return points
+export function normalize(points: (Point | Point3)[]): Point3[] {
+  if (points.length === 0) return []
   const b = bounds(points)
+  let minZ = Infinity
+  let maxZ = -Infinity
+  for (const p of points) {
+    const z = 'z' in p ? p.z : 0
+    if (z < minZ) minZ = z
+    if (z > maxZ) maxZ = z
+  }
   const cx = (b.minX + b.maxX) / 2
   const cy = (b.minY + b.maxY) / 2
-  const half = Math.max(b.width, b.height) / 2 || 1
-  return points.map((p) => ({ x: (p.x - cx) / half, y: (p.y - cy) / half }))
+  const cz = (minZ + maxZ) / 2
+  const half = Math.max(b.width, b.height, maxZ - minZ) / 2 || 1
+  return points.map((p) => ({ x: (p.x - cx) / half, y: (p.y - cy) / half, z: (('z' in p ? p.z : 0) - cz) / half }))
+}
+
+export type DepthMode = 'flat' | 'source' | 'wave' | 'bowl' | 'saddle' | 'ramp'
+
+/**
+ * Procedural depth for flat drawings. `u` is the normalised position along
+ * the loop (0 … 2π). Source depth is kept when mode is 'source'.
+ */
+export function applyDepth(points: Point3[], mode: DepthMode, amplitude: number, harmonic: number): Point3[] {
+  if (mode === 'source') return points
+  if (mode === 'flat') return points.map((p) => ({ x: p.x, y: p.y, z: 0 }))
+  const m = points.length
+  return points.map((p, i) => {
+    const u = (2 * Math.PI * i) / m
+    let z = 0
+    switch (mode) {
+      case 'wave':
+        z = Math.sin(harmonic * u)
+        break
+      case 'bowl':
+        z = p.x * p.x + p.y * p.y - 0.5
+        break
+      case 'saddle':
+        z = 2 * p.x * p.y
+        break
+      case 'ramp':
+        z = p.y
+        break
+    }
+    return { x: p.x, y: p.y, z: z * amplitude }
+  })
 }
 
 /** Convert a contour back to a point list. */

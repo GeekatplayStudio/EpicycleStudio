@@ -18,19 +18,25 @@ export function splitAnchors(a0: number, c0: number, sumRx: number, sumRy: numbe
   }
 }
 
-export function sceneBox(mode: RenderMode, sumRx: number, sumRy: number, sumRc: number): SceneBox {
+/** Anchor x of the depth chain (right of the drawing), used by the 3D view. */
+export function zAnchorX(sumRz: number): number {
+  return 1 + CHAIN_GAP + sumRz
+}
+
+export function sceneBox(mode: RenderMode, sumRx: number, sumRy: number, sumRc: number, sumRz = 0): SceneBox {
+  const zRight = sumRz > 0 ? zAnchorX(sumRz) + sumRz : -Infinity
   if (mode === 'split') {
     const xa = -(1 + CHAIN_GAP + sumRx)
     const ya = -(1 + CHAIN_GAP + sumRy)
     return {
       minX: Math.min(ya - sumRy, -1.05),
-      maxX: Math.max(1.05, sumRx * 0.6),
+      maxX: Math.max(1.05, sumRx * 0.6, zRight),
       minY: Math.min(xa - sumRx, -1.05),
       maxY: Math.max(1.05, sumRy * 0.6),
     }
   }
   const e = Math.max(1.15, Math.min(sumRc * 0.85, 1.8))
-  return { minX: -e, maxX: e, minY: -e, maxY: e }
+  return { minX: -e, maxX: Math.max(e, zRight), minY: -e, maxY: e }
 }
 
 export interface ViewTransform {

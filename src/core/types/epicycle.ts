@@ -4,12 +4,21 @@ export interface Point {
   y: number
 }
 
+/** 3D point. z = 0 for flat drawings. */
+export interface Point3 extends Point {
+  z: number
+}
+
 /** A sampled closed contour, uniformly resampled by arc length. */
 export interface Contour {
   /** Number of samples. */
   n: number
   xs: Float64Array
   ys: Float64Array
+  /** Depth samples; all zero for flat contours. */
+  zs: Float64Array
+  /** True when the contour has non-zero depth. */
+  is3D: boolean
 }
 
 /**
@@ -25,10 +34,11 @@ export interface Harmonic {
 }
 
 /**
- * Dual real-series coefficients.
+ * Real-series coefficients, one series per axis.
  *   x(t) = a0/2 + Σ a_k cos(kt) + b_k sin(kt)
  *   y(t) = c0/2 + Σ c_k cos(kt) + d_k sin(kt)
- * Arrays are indexed by k, index 0 holds a0 / c0 (b0 = d0 = 0).
+ *   z(t) = e0/2 + Σ e_k cos(kt) + f_k sin(kt)
+ * Arrays are indexed by k, index 0 holds a0 / c0 / e0 (b0 = d0 = f0 = 0).
  */
 export interface RealSeries {
   kMax: number
@@ -36,6 +46,8 @@ export interface RealSeries {
   b: Float64Array
   c: Float64Array
   d: Float64Array
+  e: Float64Array
+  f: Float64Array
 }
 
 /** Full transform result for a contour. */
@@ -44,6 +56,7 @@ export interface Spectrum {
   /** Complex coefficients c_k for k ∈ [-N/2, N/2 - 1], in frequency order 0, 1, -1, 2, -2 … */
   complex: Harmonic[]
   real: RealSeries
+  is3D: boolean
 }
 
 export type RenderMode = 'split' | 'complex'

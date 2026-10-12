@@ -52,8 +52,8 @@ export function ExportModal({ data }: { data: SpectrumData }) {
   const [mathKind, setMathKind] = useState<'latex' | 'json'>('latex')
 
   const base = slug(sourceName)
-  const latex = useMemo(() => latexDocument(data.spectrum.real, data.harmonics, data.K, data.contour.n, sourceName), [data, sourceName])
-  const json = useMemo(() => coefficientsJson(data.spectrum.real, data.harmonics, data.K, data.contour.n, sourceName), [data, sourceName])
+  const latex = useMemo(() => latexDocument(data.spectrum.real, data.harmonics, data.K, data.contour.n, sourceName, data.is3D), [data, sourceName])
+  const json = useMemo(() => coefficientsJson(data.spectrum.real, data.harmonics, data.K, data.contour.n, sourceName, data.is3D), [data, sourceName])
   const code = useMemo(() => {
     if (codeLang === 'python') return pythonSnippet(data.harmonics)
     if (codeLang === 'javascript') return javascriptSnippet(data.harmonics)

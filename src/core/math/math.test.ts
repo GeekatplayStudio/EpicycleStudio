@@ -115,3 +115,29 @@ describe('dft', () => {
     expect(performance.now() - t0).toBeLessThan(16)
   })
 })
+
+describe('space curves', () => {
+  it('fits a third real series to depth and reconstructs it', () => {
+    const pts = Array.from({ length: 200 }, (_, i) => {
+      const u = (2 * Math.PI * i) / 200
+      return { x: Math.cos(u), y: Math.sin(u), z: 0.5 * Math.sin(3 * u) }
+    })
+    const contour = resampleUniform(pts, 256)
+    expect(contour.is3D).toBe(true)
+    const spec = computeSpectrum(contour)
+    expect(spec.is3D).toBe(true)
+    // z = 0.5 sin(3t) → f_3 ≈ 0.5 (arc-length reparameterisation perturbs it slightly)
+    expect(spec.real.f[3]).toBeCloseTo(0.5, 1)
+    expect(Math.abs(spec.real.e[3])).toBeLessThan(0.05)
+    const K = maxHarmonics(256)
+    const err = rmse(contour, reconstruct(spec, K))
+    expect(err).toBeLessThan(1e-6)
+    const p = evalRealPoint(spec.real, K, 0.7)
+    expect(p.z).toBeCloseTo(reconstruct(spec, K).zs[Math.round((0.7 / (2 * Math.PI)) * 256)], 1)
+  })
+  it('flat contours stay 2D with zero depth coefficients', () => {
+    const spec = computeSpectrum(resampleUniform(square(2), 64))
+    expect(spec.is3D).toBe(false)
+    expect(spec.real.e.every((v) => v === 0)).toBe(true)
+  })
+})

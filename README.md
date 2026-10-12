@@ -33,18 +33,22 @@ Windows: double-click `start.cmd`, or use `npm install`, `npm run dev`, `npm run
 - Freehand drawing with automatic loop closing
 - SVG import (`path`, `polygon`, `polyline`, `circle`, `ellipse`, `rect`)
 - Bitmap silhouettes (PNG, JPEG, WebP) traced automatically; drag-and-drop or paste
-- Built-in presets: heart, star, square, triangle, infinity, butterfly, gear, π
+- 3D point lists as JSON (`[[x,y,z], …]`, `[{x,y,z}, …]`) or CSV rows
+- Flat presets: heart, star, square, triangle, infinity, butterfly, gear, π
+- 3D curve presets: trefoil knot, torus knot, Viviani curve, baseball seam, Lissajous, closed spring
 
 **Visualisation**
 - *Orthogonal split*: separate x(t) and y(t) circle chains with projection lines
 - *Complex chain*: one nested chain of rotating vectors
-- 3D view powered by three.js, with optional time extrusion
+- 3D view powered by three.js: every chain lives in its own plane and the projections meet at the pen
+- Space curves get a third series z(t) with its own depth chain; flat drawings can be sculpted into 3D with wave, bowl, saddle or ramp depth
+- Optional time extrusion that turns any loop into a helix
 - Harmonic count K with live reconstruction error, frequency or amplitude ordering
 - Play, pause, scrub, speed 0.1×–5×, layer toggles, custom colors, dark and light themes
 - Live amplitude spectrum, rendered formulas and coefficient tables
 
 **Export**
-- LaTeX equations and JSON coefficients
+- LaTeX equations and JSON coefficients (x, y and z series)
 - Ready-to-run Python (Matplotlib), JavaScript (HTML5 Canvas) and GLSL shader snippets
 - WebM video recording, loopable animated SVG, PNG frame
 
@@ -60,7 +64,7 @@ Windows: double-click `start.cmd`, or use `npm install`, `npm run dev`, `npm run
 | `E` | Export |
 | `Esc` | Close / leave draw mode |
 
-Share a state with the URL, for example `?preset=butterfly&mode=complex&k=40&view=3d&theme=light`.
+Share a state with the URL, for example `?preset=trefoil&k=12` or `?preset=heart&depth=wave&mode=complex&k=40&theme=light`.
 
 ## Built with
 
